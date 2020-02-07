@@ -2,6 +2,7 @@ package com.xxl.job.admin.core.trigger;
 
 import com.xxl.job.admin.core.conf.XxlJobAdminConfig;
 import com.xxl.job.admin.core.conf.XxlJobScheduler;
+import com.xxl.job.admin.core.cron.SimpleTrigger;
 import com.xxl.job.admin.core.model.XxlJobGroup;
 import com.xxl.job.admin.core.model.XxlJobInfo;
 import com.xxl.job.admin.core.model.XxlJobLog;
@@ -179,6 +180,8 @@ public class XxlJobTrigger {
         jobLog.setTriggerCode(triggerResult.getCode());
         jobLog.setTriggerMsg(triggerMsgSb.toString());
         XxlJobAdminConfig.getAdminConfig().getXxlJobLogDao().updateTriggerInfo(jobLog);
+
+        SimpleTrigger.updateRepeatCount(jobInfo.getId());
 
         logger.debug(">>>>>>>>>>> xxl-job trigger end, jobId:{}", jobLog.getId());
     }

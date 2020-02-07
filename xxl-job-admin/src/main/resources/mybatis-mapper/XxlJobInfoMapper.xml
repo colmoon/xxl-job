@@ -7,7 +7,11 @@
 		<result column="id" property="id" />
 
 		<result column="job_group" property="jobGroup" />
-	    <result column="job_cron" property="jobCron" />
+	    <result column="job_trigger_mode" property="jobTriggerMode" />
+		<result column="job_cron" property="jobCron" />
+		<result column="job_repeat_count" property="jobRepeatCount" />
+		<result column="job_repeat_interval" property="jobRepeatInterval" />
+		<result column="job_delay" property="jobDelay" />
 	    <result column="job_desc" property="jobDesc" />
 
 	    <result column="add_time" property="addTime" />
@@ -38,7 +42,11 @@
 	<sql id="Base_Column_List">
 		t.id,
 		t.job_group,
+		t.job_trigger_mode,
 		t.job_cron,
+		t.job_repeat_count,
+		t.job_repeat_interval,
+		t.job_delay,
 		t.job_desc,
 		t.add_time,
 		t.update_time,

@@ -14,6 +14,16 @@ public class XxlJobInfo {
 	private int jobGroup;		// 执行器主键ID
 	private String jobCron;		// 任务执行CRON表达式
 	private String jobDesc;
+
+	//定时器模式 00：cron，01：simpleTrigger
+	private String jobTriggerMode;
+
+	//simpleTrigger模式的 count 和 interval
+	private int jobRepeatCount;
+	private long jobRepeatInterval;
+
+	//初始延迟时间
+	private long jobDelay;
 	
 	private Date addTime;
 	private Date updateTime;
@@ -70,6 +80,38 @@ public class XxlJobInfo {
 
 	public void setJobDesc(String jobDesc) {
 		this.jobDesc = jobDesc;
+	}
+
+	public String getJobTriggerMode() {
+		return jobTriggerMode;
+	}
+
+	public void setJobTriggerMode(String jobTriggerMode) {
+		this.jobTriggerMode = jobTriggerMode;
+	}
+
+	public int getJobRepeatCount() {
+		return jobRepeatCount;
+	}
+
+	public void setJobRepeatCount(int jobRepeatCount) {
+		this.jobRepeatCount = jobRepeatCount;
+	}
+
+	public long getJobRepeatInterval() {
+		return jobRepeatInterval;
+	}
+
+	public void setJobRepeatInterval(long jobRepeatInterval) {
+		this.jobRepeatInterval = jobRepeatInterval;
+	}
+
+	public long getJobDelay() {
+		return jobDelay;
+	}
+
+	public void setJobDelay(long jobDelay) {
+		this.jobDelay = jobDelay;
 	}
 
 	public Date getAddTime() {

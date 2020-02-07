@@ -2,6 +2,8 @@ package com.xxl.job.admin.core.thread;
 
 import com.xxl.job.admin.core.conf.XxlJobAdminConfig;
 import com.xxl.job.admin.core.cron.CronExpression;
+import com.xxl.job.admin.core.cron.ScheduleMode;
+import com.xxl.job.admin.core.cron.SimpleTrigger;
 import com.xxl.job.admin.core.model.XxlJobInfo;
 import com.xxl.job.admin.core.trigger.TriggerTypeEnum;
 import org.slf4j.Logger;
@@ -10,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.text.ParseException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -32,6 +35,8 @@ public class JobScheduleHelper {
     private volatile boolean scheduleThreadToStop = false;
     private volatile boolean ringThreadToStop = false;
     private volatile static Map<Integer, List<Integer>> ringData = new ConcurrentHashMap<>();
+
+    private volatile static Map<Integer, Object> delayData = new ConcurrentHashMap<>();
 
     public void start(){
 
@@ -73,32 +78,38 @@ public class JobScheduleHelper {
                             // 2、推送时间轮
                             for (XxlJobInfo jobInfo: scheduleList) {
 
+                                //固定周期且有次数的定时任务已完成
+                                if (SimpleTrigger.fixTaskData.get(jobInfo.getId()) != null){
+                                    continue;
+                                }
+
                                 // 时间轮刻度计算
                                 if (nowTime > jobInfo.getTriggerNextTime() + PRE_READ_MS) {
                                     // 过期超5s：本地忽略，当前时间开始计算下次触发时间
 
                                     // fresh next
                                     jobInfo.setTriggerLastTime(jobInfo.getTriggerNextTime());
-                                    jobInfo.setTriggerNextTime(
-                                            new CronExpression(jobInfo.getJobCron())
-                                                    .getNextValidTimeAfter(new Date())
-                                                    .getTime()
-                                    );
-
+                                    calculateNextTriggerTime(jobInfo, "02");
+                                    //固定周期模式 立即触发一次
+                                    if (ScheduleMode.FIX.getMode().equals(jobInfo.getJobTriggerMode())){
+                                        if (jobInfo.getJobDelay() == 0){
+                                            JobTriggerPoolHelper.trigger(jobInfo.getId(), TriggerTypeEnum.FIX, -1, null, null);
+                                        }
+                                    }
                                 } else if (nowTime > jobInfo.getTriggerNextTime()) {
                                     // 过期5s内 ：立即触发一次，当前时间开始计算下次触发时间；
 
-                                    CronExpression cronExpression = new CronExpression(jobInfo.getJobCron());
-                                    long nextTime = cronExpression.getNextValidTimeAfter(new Date()).getTime();
-
                                     // 1、trigger
-                                    JobTriggerPoolHelper.trigger(jobInfo.getId(), TriggerTypeEnum.CRON, -1, null, null);
+                                    if (ScheduleMode.CRON.getMode().equals(jobInfo.getJobTriggerMode())){
+                                        JobTriggerPoolHelper.trigger(jobInfo.getId(), TriggerTypeEnum.CRON, -1, null, null);
+                                    } else {
+                                        JobTriggerPoolHelper.trigger(jobInfo.getId(), TriggerTypeEnum.FIX, -1, null, null);
+                                    }
                                     logger.debug(">>>>>>>>>>> xxl-job, shecule push trigger : jobId = " + jobInfo.getId() );
 
                                     // 2、fresh next
                                     jobInfo.setTriggerLastTime(jobInfo.getTriggerNextTime());
-                                    jobInfo.setTriggerNextTime(nextTime);
-
+                                    calculateNextTriggerTime(jobInfo, "00");
 
                                     // 下次5s内：预读一次；
                                     if (jobInfo.getTriggerNextTime() - nowTime < PRE_READ_MS) {
@@ -111,14 +122,8 @@ public class JobScheduleHelper {
 
                                         // 3、fresh next
                                         jobInfo.setTriggerLastTime(jobInfo.getTriggerNextTime());
-                                        jobInfo.setTriggerNextTime(
-                                                new CronExpression(jobInfo.getJobCron())
-                                                        .getNextValidTimeAfter(new Date(jobInfo.getTriggerNextTime()))
-                                                        .getTime()
-                                        );
-
+                                        calculateNextTriggerTime(jobInfo, "01");
                                     }
-
                                 } else {
                                     // 未过期：正常触发，递增计算下次触发时间
 
@@ -130,12 +135,7 @@ public class JobScheduleHelper {
 
                                     // 3、fresh next
                                     jobInfo.setTriggerLastTime(jobInfo.getTriggerNextTime());
-                                    jobInfo.setTriggerNextTime(
-                                            new CronExpression(jobInfo.getJobCron())
-                                                    .getNextValidTimeAfter(new Date(jobInfo.getTriggerNextTime()))
-                                                    .getTime()
-                                    );
-
+                                    calculateNextTriggerTime(jobInfo, "01");
                                 }
 
                             }
@@ -236,8 +236,17 @@ public class JobScheduleHelper {
                         if (ringItemData!=null && ringItemData.size()>0) {
                             // do trigger
                             for (int jobId: ringItemData) {
+                                XxlJobInfo jobInfo = XxlJobAdminConfig.getAdminConfig().getXxlJobInfoDao().loadById(jobId);
+                                if (jobInfo == null) {
+                                    logger.warn(">>>>>>>>>>>> trigger fail, jobId invalid，jobId={}", jobId);
+                                    return;
+                                }
                                 // do trigger
-                                JobTriggerPoolHelper.trigger(jobId, TriggerTypeEnum.CRON, -1, null, null);
+                                if (ScheduleMode.CRON.getMode().equals(jobInfo.getJobTriggerMode())){
+                                    JobTriggerPoolHelper.trigger(jobId, TriggerTypeEnum.CRON, -1, null, null);
+                                } else {
+                                    JobTriggerPoolHelper.trigger(jobId, TriggerTypeEnum.FIX, -1, null, null);
+                                }
                             }
                             // clear
                             ringItemData.clear();
@@ -263,6 +272,61 @@ public class JobScheduleHelper {
         ringThread.setDaemon(true);
         ringThread.setName("xxl-job, admin JobScheduleHelper#ringThread");
         ringThread.start();
+    }
+
+
+    private void calculateNextTriggerTime(XxlJobInfo jobInfo, String type){
+        try {
+            long nextTriggerTime = -1;
+            if (ScheduleMode.CRON.getMode().equals(jobInfo.getJobTriggerMode())){
+                if ("00".equals(type)){
+                    nextTriggerTime = new CronExpression(jobInfo.getJobCron())
+                             .getNextValidTimeAfter(new Date())
+                             .getTime();
+                } else if ("01".equals(type)){
+                    nextTriggerTime = new CronExpression(jobInfo.getJobCron())
+                            .getNextValidTimeAfter(new Date(jobInfo.getTriggerNextTime()))
+                            .getTime();
+                } else if ("02".equals(type)){
+                    nextTriggerTime = new CronExpression(jobInfo.getJobCron())
+                            .getNextValidTimeAfter(new Date())
+                            .getTime();
+                    //第一次进行delay的延迟
+                    if (!delayData.containsKey(jobInfo.getId())){
+                        delayData.put(jobInfo.getId(), jobInfo);
+                        nextTriggerTime = nextTriggerTime + jobInfo.getJobDelay() * 1000;
+                    }
+                }
+            } else {
+                SimpleTrigger simpleTrigger = new SimpleTrigger.Builder().withJobId(jobInfo.getId())
+                        .withRepeatCount(jobInfo.getJobRepeatCount())
+                        .withIntervalInSeconds(jobInfo.getJobRepeatInterval())
+                        .builder();
+                Date nextTriggerDate = null;
+                if ("00".equals(type)){
+                    nextTriggerDate = simpleTrigger.getFireTimeAfter(new Date());
+                } else if ("01".equals(type)){
+                    nextTriggerDate = simpleTrigger.getFireTimeAfter(new Date(jobInfo.getTriggerNextTime()));
+                } else if ("02".equals(type)){
+                    nextTriggerDate = new Date();
+                }
+
+                if (nextTriggerDate != null){
+                    nextTriggerTime = nextTriggerDate.getTime();
+                    //第一次进行delay的延迟
+                    if (!delayData.containsKey(jobInfo.getId()) && "02".equals(type)){
+                        delayData.put(jobInfo.getId(), jobInfo);
+                        nextTriggerTime = nextTriggerTime + jobInfo.getJobDelay() * 1000;
+                    }
+                }
+            }
+            if (-1 != nextTriggerTime){
+                jobInfo.setTriggerNextTime(nextTriggerTime);
+            }
+        } catch (ParseException e){
+            logger.error(e.getMessage(),e);
+        }
+
     }
 
     private void pushTimeRing(int ringSecond, int jobId){
