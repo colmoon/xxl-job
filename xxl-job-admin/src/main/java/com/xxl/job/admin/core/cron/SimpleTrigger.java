@@ -27,9 +27,7 @@ public class SimpleTrigger {
         this.repeatCount = builder.repeatCount;
         this.repeatInterval = builder.repeatInterval;
         this.jobId = builder.jobId;
-        if (triggerData.get(jobId) == null){
-            triggerData.put(jobId, this);
-        }
+        triggerData.putIfAbsent(jobId, this);
     }
 
     public int getRepeatCount() {
@@ -92,9 +90,7 @@ public class SimpleTrigger {
         long afterMillis = afterTime.getTime();
 
 
-        Date time = new Date(afterMillis + repeatInterval * 1000);
-
-        return time;
+        return new Date(afterMillis + repeatInterval * 1000);
     }
 
     public static void updateRepeatCount(int jobId){

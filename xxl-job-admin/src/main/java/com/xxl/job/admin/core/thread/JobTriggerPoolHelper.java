@@ -26,12 +26,7 @@ public class JobTriggerPoolHelper {
             60L,
             TimeUnit.SECONDS,
             new LinkedBlockingQueue<Runnable>(1000),
-            new ThreadFactory() {
-                @Override
-                public Thread newThread(Runnable r) {
-                    return new Thread(r, "xxl-job, admin JobTriggerPoolHelper-fastTriggerPool-" + r.hashCode());
-                }
-            });
+            r -> new Thread(r, "xxl-job, admin JobTriggerPoolHelper-fastTriggerPool-" + r.hashCode()));
 
     private ThreadPoolExecutor slowTriggerPool = new ThreadPoolExecutor(
             10,
@@ -39,12 +34,7 @@ public class JobTriggerPoolHelper {
             60L,
             TimeUnit.SECONDS,
             new LinkedBlockingQueue<Runnable>(2000),
-            new ThreadFactory() {
-                @Override
-                public Thread newThread(Runnable r) {
-                    return new Thread(r, "xxl-job, admin JobTriggerPoolHelper-slowTriggerPool-" + r.hashCode());
-                }
-            });
+            r -> new Thread(r, "xxl-job, admin JobTriggerPoolHelper-slowTriggerPool-" + r.hashCode()));
 
 
     // job timeout count

@@ -56,12 +56,7 @@ public class ExecutorRouteLFU extends ExecutorRouter {
 
         // load least userd count address
         List<Map.Entry<String, Integer>> lfuItemList = new ArrayList<Map.Entry<String, Integer>>(lfuItemMap.entrySet());
-        Collections.sort(lfuItemList, new Comparator<Map.Entry<String, Integer>>() {
-            @Override
-            public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
-                return o1.getValue().compareTo(o2.getValue());
-            }
-        });
+        lfuItemList.sort(Map.Entry.comparingByValue());
 
         Map.Entry<String, Integer> addressItem = lfuItemList.get(0);
         String minAddress = addressItem.getKey();
